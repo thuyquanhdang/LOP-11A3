@@ -106,6 +106,19 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
 
   if (!isOpen || !student) return null;
 
+  const autoSaveUpdatedStudent = (overrides: Partial<Student>) => {
+    if (!onSaveStudent) return;
+    const updated: Student = {
+      ...student,
+      subjectScores: overrides.subjectScores ?? editableScores,
+      weeklyEmulation: overrides.weeklyEmulation ?? editableEmulation,
+      academicRating: overrides.academicRating ?? editableAcademicRating,
+      conductRating: overrides.conductRating ?? editableConductRating,
+      notes: overrides.notes ?? editableNotes
+    };
+    onSaveStudent(updated);
+  };
+
   // Handle score change
   const handleScoreChange = (idx: number, field: keyof SubjectScore, val: string) => {
     const numVal = val === '' ? undefined : parseFloat(val);
@@ -125,18 +138,23 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
         item.avg = Math.round(avg * 10) / 10;
       }
       next[idx] = item;
+      autoSaveUpdatedStudent({ subjectScores: next });
       return next;
     });
-    setHasUnsavedChanges(true);
+    setHasUnsavedChanges(false);
   };
 
   // Handle emulation change
   const handleEmulationChange = (weekNum: number, rating: ConductRating) => {
-    setEditableEmulation(prev => ({
-      ...prev,
-      [weekNum]: rating
-    }));
-    setHasUnsavedChanges(true);
+    setEditableEmulation(prev => {
+      const next = {
+        ...prev,
+        [weekNum]: rating
+      };
+      autoSaveUpdatedStudent({ weeklyEmulation: next });
+      return next;
+    });
+    setHasUnsavedChanges(false);
   };
 
   // Save changes handler
@@ -388,8 +406,10 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                   rows={2}
                   value={editableNotes}
                   onChange={(e) => {
-                    setEditableNotes(e.target.value);
-                    setHasUnsavedChanges(true);
+                    const val = e.target.value;
+                    setEditableNotes(val);
+                    autoSaveUpdatedStudent({ notes: val });
+                    setHasUnsavedChanges(false);
                   }}
                   placeholder="Nhập ghi chú của GVCN cho học sinh này..."
                   className="w-full text-sm text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-200 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
@@ -429,8 +449,10 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                   <select
                     value={editableAcademicRating}
                     onChange={(e) => {
-                      setEditableAcademicRating(e.target.value as AcademicRating);
-                      setHasUnsavedChanges(true);
+                      const val = e.target.value as AcademicRating;
+                      setEditableAcademicRating(val);
+                      autoSaveUpdatedStudent({ academicRating: val });
+                      setHasUnsavedChanges(false);
                     }}
                     className="px-3 py-1 rounded-lg text-xs font-bold bg-white border border-blue-300 text-blue-900 focus:ring-2 focus:ring-blue-500"
                   >
@@ -546,8 +568,10 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                     <select
                       value={editableConductRating}
                       onChange={(e) => {
-                        setEditableConductRating(e.target.value as ConductRating);
-                        setHasUnsavedChanges(true);
+                        const val = e.target.value as ConductRating;
+                        setEditableConductRating(val);
+                        autoSaveUpdatedStudent({ conductRating: val });
+                        setHasUnsavedChanges(false);
                       }}
                       className="px-3 py-1 rounded-lg text-xs font-bold bg-emerald-50 border border-emerald-300 text-emerald-900 focus:ring-2 focus:ring-emerald-500"
                     >

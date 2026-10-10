@@ -36,11 +36,32 @@ function readServerState(): Record<string, any> | null {
 function writeServerState(data: Record<string, any>): boolean {
   try {
     const existing = readServerState() || {};
-    const merged = {
-      ...existing,
-      ...data,
-      updatedAt: new Date().toISOString()
+    const existingTimestamps: Record<string, number> = existing._timestamps || {};
+    const incomingTimestamps: Record<string, number> = data._timestamps || {};
+    const now = Date.now();
+
+    const mergedTimestamps: Record<string, number> = {
+      ...existingTimestamps,
+      ...incomingTimestamps
     };
+
+    const merged: Record<string, any> = {
+      ...existing
+    };
+
+    Object.keys(data).forEach((k) => {
+      if (k === '_timestamps' || k === 'updatedAt') return;
+      const incomingTs = incomingTimestamps[k] || now;
+      const existingTs = existingTimestamps[k] || 0;
+      if (incomingTs >= existingTs) {
+        merged[k] = data[k];
+        mergedTimestamps[k] = incomingTs;
+      }
+    });
+
+    merged._timestamps = mergedTimestamps;
+    merged.updatedAt = new Date(now).toISOString();
+
     fs.writeFileSync(DATA_FILE_PATH, JSON.stringify(merged, null, 2), 'utf-8');
     return true;
   } catch (err) {
@@ -65,6 +86,7 @@ app.get('/api/health', (req, res) => {
 
 // Server-side Persistent State Endpoints
 app.get('/api/state', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   const state = readServerState();
   res.json({ hasState: state !== null, state });
 });

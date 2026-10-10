@@ -38,9 +38,13 @@ const STORAGE_KEYS = {
   ACTIVE_TAB: 'tro_ly_cn_11a3_active_tab',
 };
 
+const TIMESTAMPS_KEY = 'tro_ly_cn_11a3_timestamps_v2';
+const LEGACY_STUDENTS_KEY = 'tlcn_students_v1';
+
 export interface StorageSaveResult {
   success: boolean;
   error?: string;
+  updatedAt?: number;
 }
 
 export interface FullAppState {
@@ -56,8 +60,97 @@ export interface FullAppState {
   chatMessages: ChatMessage[];
 }
 
+interface TimestampedRecord<T> {
+  value: T;
+  updatedAt: number;
+}
+
 // ============================================================================
-// LỚP LƯU TRỮ 2: INDEXEDDB (Không giới hạn 5MB như localStorage, lưu hàng trăm ảnh)
+// QUẢN LÝ DẤU THỜI GIAN (TIMESTAMPS) ĐỂ LUÔN LẤY DỮ LIỆU MỚI NHẤT KHI TẢI LẠI TRANG
+// ============================================================================
+function getLocalTimestamps(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(TIMESTAMPS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return parsed;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return {};
+}
+
+function setLocalTimestamp(key: string, ts: number): void {
+  try {
+    const current = getLocalTimestamps();
+    current[key] = ts;
+    localStorage.setItem(TIMESTAMPS_KEY, JSON.stringify(current));
+  } catch {
+    // ignore
+  }
+}
+
+export function getLastSavedTimestamp(): number {
+  const map = getLocalTimestamps();
+  const values = Object.values(map);
+  if (values.length === 0) return Date.now();
+  return Math.max(...values);
+}
+
+// ============================================================================
+// ĐỒNG BỘ TỨC THÌ GIỮA CÁC TAB TRÌNH DUYỆT (BROADCAST CHANNEL)
+// ============================================================================
+const SYNC_CHANNEL_NAME = 'tro_ly_cn_11a3_live_sync';
+let syncChannel: BroadcastChannel | null = null;
+
+function getSyncChannel(): BroadcastChannel | null {
+  if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return null;
+  if (!syncChannel) {
+    try {
+      syncChannel = new BroadcastChannel(SYNC_CHANNEL_NAME);
+    } catch {
+      return null;
+    }
+  }
+  return syncChannel;
+}
+
+export function subscribeToStorageUpdates(
+  onUpdate: (key: string, value: any, updatedAt: number) => void
+): () => void {
+  const ch = getSyncChannel();
+  const handleBroadcast = (event: MessageEvent) => {
+    if (event.data && event.data.key && event.data.updatedAt) {
+      onUpdate(event.data.key, event.data.value, event.data.updatedAt);
+    }
+  };
+  const handleStorageEvent = (event: StorageEvent) => {
+    if (!event.key || !event.newValue) return;
+    if (Object.values(STORAGE_KEYS).includes(event.key)) {
+      try {
+        const parsed = JSON.parse(event.newValue);
+        const tsMap = getLocalTimestamps();
+        onUpdate(event.key, parsed, tsMap[event.key] || Date.now());
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  if (ch) ch.addEventListener('message', handleBroadcast);
+  if (typeof window !== 'undefined') window.addEventListener('storage', handleStorageEvent);
+
+  return () => {
+    if (ch) ch.removeEventListener('message', handleBroadcast);
+    if (typeof window !== 'undefined') window.removeEventListener('storage', handleStorageEvent);
+  };
+}
+
+// ============================================================================
+// LỚP LƯU TRỮ 2: INDEXEDDB (Lưu trữ kèm timestamp để phân biệt dữ liệu mới/cũ)
 // ============================================================================
 const IDB_NAME = 'TroLyChuNhiem11A3_DB';
 const IDB_STORE = 'keyval_store';
@@ -79,13 +172,14 @@ function openIDB(): Promise<IDBDatabase> {
   });
 }
 
-export async function saveToIDB<T>(key: string, value: T): Promise<boolean> {
+export async function saveToIDB<T>(key: string, value: T, updatedAt: number = Date.now()): Promise<boolean> {
   try {
     const db = await openIDB();
     return new Promise((resolve) => {
       const tx = db.transaction(IDB_STORE, 'readwrite');
       const store = tx.objectStore(IDB_STORE);
-      store.put(value, key);
+      const record: TimestampedRecord<T> = { value, updatedAt };
+      store.put(record, key);
       tx.oncomplete = () => resolve(true);
       tx.onerror = () => resolve(false);
     });
@@ -94,14 +188,26 @@ export async function saveToIDB<T>(key: string, value: T): Promise<boolean> {
   }
 }
 
-export async function loadFromIDB<T>(key: string): Promise<T | undefined> {
+export async function loadFromIDBWithMeta<T>(key: string): Promise<TimestampedRecord<T> | undefined> {
   try {
     const db = await openIDB();
     return new Promise((resolve) => {
       const tx = db.transaction(IDB_STORE, 'readonly');
       const store = tx.objectStore(IDB_STORE);
       const req = store.get(key);
-      req.onsuccess = () => resolve(req.result as T | undefined);
+      req.onsuccess = () => {
+        const res = req.result;
+        if (res === undefined || res === null) {
+          resolve(undefined);
+          return;
+        }
+        // Tương thích ngược nếu bản ghi cũ trong IDB chưa bọc { value, updatedAt }
+        if (typeof res === 'object' && 'value' in res && 'updatedAt' in res) {
+          resolve(res as TimestampedRecord<T>);
+        } else {
+          resolve({ value: res as T, updatedAt: 1 });
+        }
+      };
       req.onerror = () => resolve(undefined);
     });
   } catch {
@@ -110,14 +216,17 @@ export async function loadFromIDB<T>(key: string): Promise<T | undefined> {
 }
 
 // ============================================================================
-// LỚP LƯU TRỮ 3: SERVER DISK STORAGE (/api/state) - Lưu trực tiếp trên ổ cứng Server
+// LỚP LƯU TRỮ 3: SERVER DISK STORAGE (/api/state) - Lưu kèm dấu thời gian _timestamps
 // ============================================================================
-export async function syncKeyToServer<T>(key: string, value: T): Promise<boolean> {
+export async function syncKeyToServer<T>(key: string, value: T, updatedAt: number = Date.now()): Promise<boolean> {
   try {
     const res = await fetch('/api/state', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [key]: value })
+      body: JSON.stringify({
+        [key]: value,
+        _timestamps: { [key]: updatedAt }
+      })
     });
     return res.ok;
   } catch {
@@ -125,12 +234,25 @@ export async function syncKeyToServer<T>(key: string, value: T): Promise<boolean
   }
 }
 
-export async function syncFullStateToServer(payload: Record<string, any>): Promise<boolean> {
+export async function syncFullStateToServer(
+  payload: Record<string, any>,
+  timestamps?: Record<string, number>
+): Promise<boolean> {
   try {
+    const now = Date.now();
+    const tsPayload: Record<string, number> = timestamps || {};
+    if (!timestamps) {
+      Object.keys(payload).forEach((k) => {
+        tsPayload[k] = now;
+      });
+    }
     const res = await fetch('/api/state', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        ...payload,
+        _timestamps: tsPayload
+      })
     });
     return res.ok;
   } catch {
@@ -140,7 +262,13 @@ export async function syncFullStateToServer(payload: Record<string, any>): Promi
 
 export async function fetchServerState(): Promise<Record<string, any> | null> {
   try {
-    const res = await fetch('/api/state');
+    const res = await fetch(`/api/state?t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
+    });
     if (!res.ok) return null;
     const data = await res.json();
     if (data && data.hasState && data.state) {
@@ -155,6 +283,26 @@ export async function fetchServerState(): Promise<Record<string, any> | null> {
 // ============================================================================
 // LỚP LƯU TRỮ 1: LOCALSTORAGE + ĐỒNG BỘ TỰ ĐỘNG SANG INDEXEDDB & SERVER
 // ============================================================================
+
+/**
+ * Tự động kiểm tra và hợp nhất khóa phụ cũ ('tlcn_students_v1') nếu từng được lưu
+ * để đảm bảo không còn dữ liệu cũ bị lệch khóa.
+ */
+function migrateLegacyKeysIfNeeded(): void {
+  try {
+    const legacyStudentsRaw = localStorage.getItem(LEGACY_STUDENTS_KEY);
+    if (legacyStudentsRaw !== null) {
+      const mainStudentsRaw = localStorage.getItem(STORAGE_KEYS.STUDENTS);
+      if (mainStudentsRaw === null) {
+        localStorage.setItem(STORAGE_KEYS.STUDENTS, legacyStudentsRaw);
+        setLocalTimestamp(STORAGE_KEYS.STUDENTS, Date.now());
+      }
+      localStorage.removeItem(LEGACY_STUDENTS_KEY);
+    }
+  } catch {
+    // ignore
+  }
+}
 
 /**
  * Đọc dữ liệu từ localStorage.
@@ -177,29 +325,43 @@ export const loadFromStorage = <T>(key: string, defaultValue: T): T => {
 };
 
 /**
- * Ghi dữ liệu bền vững vào cả 3 nơi:
- * 1. localStorage (đồng bộ tức thì)
- * 2. IndexedDB (dung lượng lớn cho hình ảnh)
- * 3. Server Disk (/api/state) (bền vững ngay cả khi đổi trình duyệt / tràn bộ nhớ)
+ * Ghi dữ liệu bền vững kèm timestamp mới nhất vào cả 3 nơi:
+ * 1. localStorage (cập nhật ngay lập tức + lưu timestamp mới nhất)
+ * 2. IndexedDB (lưu kèm timestamp, không giới hạn dung lượng)
+ * 3. Server Disk (/api/state) (lưu kèm timestamp, bền vững tuyệt đối)
+ * 4. Phát tín hiệu BroadcastChannel để mọi tab mở cùng lúc tự động cập nhật
  */
 export const saveToStorage = <T>(key: string, value: T): StorageSaveResult => {
-  // Luôn lưu bất đồng bộ vào IndexedDB và Server Disk để đảm bảo an toàn 100%
-  saveToIDB(key, value);
-  syncKeyToServer(key, value);
+  const now = Date.now();
+  setLocalTimestamp(key, now);
+
+  // Luôn lưu bất đồng bộ vào IndexedDB và Server Disk kèm timestamp mới nhất
+  saveToIDB(key, value, now);
+  syncKeyToServer(key, value, now);
+
+  // Đồng bộ sang các tab khác nếu đang mở
+  const ch = getSyncChannel();
+  if (ch) {
+    try {
+      ch.postMessage({ key, value, updatedAt: now });
+    } catch {
+      // ignore
+    }
+  }
 
   try {
     const serialized = JSON.stringify(value);
     localStorage.setItem(key, serialized);
-    return { success: true };
+    return { success: true, updatedAt: now };
   } catch (e: any) {
-    // Nếu localStorage đầy do nhiều ảnh Base64, dữ liệu vẫn đã được lưu vào IndexedDB & Server Disk!
+    // Nếu localStorage đầy do nhiều ảnh Base64, dữ liệu và timestamp vẫn đã được lưu vào IndexedDB & Server Disk!
     console.warn(`LocalStorage đầy khi lưu khóa ${key}, đã chuyển sang lưu trữ IndexedDB & Server Disk:`, e);
-    return { success: true };
+    return { success: true, updatedAt: now };
   }
 };
 
 /**
- * Chuẩn hóa dữ liệu đã tải để luôn tương thích hiển thị
+ * Chuẩn hóa dữ liệu đã tải để luôn tương thích hiển thị và tự động cập nhật các trường liên quan
  */
 export const normalizeLoadedState = (raw: {
   classInfo?: ClassInfo;
@@ -219,6 +381,9 @@ export const normalizeLoadedState = (raw: {
     team: s.team || getDefaultTeamForStudent(s.id, s.role)
   }));
 
+  const studentMap = new Map<string, Student>();
+  normalizedStudents.forEach((s) => studentMap.set(s.id, s));
+
   const maleCount = normalizedStudents.filter((s) => s.gender === 'Nam').length;
   const femaleCount = normalizedStudents.filter((s) => s.gender === 'Nữ').length;
   const syncedClassInfo: ClassInfo = {
@@ -229,14 +394,52 @@ export const normalizeLoadedState = (raw: {
     femaleCount
   };
 
+  // Tự động đồng bộ tên học sinh và tổ mới nhất sang khen thưởng, vi phạm, hạnh kiểm, phụ huynh, chính sách
   const rawRewards = Array.isArray(raw.rewards) ? raw.rewards : INITIAL_REWARDS;
   const normalizedRewards = rawRewards.map((r) => {
-    const st = normalizedStudents.find((s) => s.id === r.studentId);
+    const st = studentMap.get(r.studentId);
     return {
       ...r,
-      team: r.team || st?.team || getDefaultTeamForStudent(r.studentId, st?.role),
+      studentName: st ? st.fullName : r.studentName,
+      team: st?.team || r.team || getDefaultTeamForStudent(r.studentId, st?.role),
       points: r.points ?? 15,
       week: r.week ?? 4
+    };
+  });
+
+  const rawViolations = Array.isArray(raw.violations) ? raw.violations : INITIAL_VIOLATIONS;
+  const normalizedViolations = rawViolations.map((v) => {
+    const st = studentMap.get(v.studentId);
+    return {
+      ...v,
+      studentName: st ? st.fullName : v.studentName
+    };
+  });
+
+  const rawConduct = Array.isArray(raw.conduct) ? raw.conduct : INITIAL_CONDUCT_EVALUATIONS;
+  const normalizedConduct = rawConduct.map((c) => {
+    const st = studentMap.get(c.studentId);
+    return {
+      ...c,
+      studentName: st ? st.fullName : c.studentName
+    };
+  });
+
+  const rawParents = Array.isArray(raw.parents) ? raw.parents : INITIAL_PARENT_CONTACTS;
+  const normalizedParents = rawParents.map((p) => {
+    const st = studentMap.get(p.studentId);
+    return {
+      ...p,
+      studentName: st ? st.fullName : p.studentName
+    };
+  });
+
+  const rawPolicies = Array.isArray(raw.policies) ? raw.policies : INITIAL_POLICY_DOCUMENTS;
+  const normalizedPolicies = rawPolicies.map((pol) => {
+    const st = studentMap.get(pol.studentId);
+    return {
+      ...pol,
+      studentName: st ? st.fullName : pol.studentName
     };
   });
 
@@ -244,12 +447,12 @@ export const normalizeLoadedState = (raw: {
     classInfo: syncedClassInfo,
     students: normalizedStudents,
     attendance: Array.isArray(raw.attendance) ? raw.attendance : INITIAL_ATTENDANCE,
-    violations: Array.isArray(raw.violations) ? raw.violations : INITIAL_VIOLATIONS,
+    violations: normalizedViolations,
     rewards: normalizedRewards,
     galleryPhotos: Array.isArray(raw.galleryPhotos) ? raw.galleryPhotos : INITIAL_GALLERY_PHOTOS,
-    conduct: Array.isArray(raw.conduct) ? raw.conduct : INITIAL_CONDUCT_EVALUATIONS,
-    parents: Array.isArray(raw.parents) ? raw.parents : INITIAL_PARENT_CONTACTS,
-    policies: Array.isArray(raw.policies) ? raw.policies : INITIAL_POLICY_DOCUMENTS,
+    conduct: normalizedConduct,
+    parents: normalizedParents,
+    policies: normalizedPolicies,
     chatMessages: Array.isArray(raw.chatMessages) ? raw.chatMessages : [],
   };
 };
@@ -259,6 +462,8 @@ export const normalizeLoadedState = (raw: {
  * TUYỆT ĐỐI bảo toàn dữ liệu người dùng đã thêm/sửa/xóa trước đó.
  */
 export const getInitialAppState = (): FullAppState => {
+  migrateLegacyKeysIfNeeded();
+
   const hasSavedClassInfo = localStorage.getItem(STORAGE_KEYS.CLASS_INFO) !== null;
   const hasSavedStudents = localStorage.getItem(STORAGE_KEYS.STUDENTS) !== null;
   const hasSavedAttendance = localStorage.getItem(STORAGE_KEYS.ATTENDANCE) !== null;
@@ -322,12 +527,14 @@ export const getInitialAppState = (): FullAppState => {
 };
 
 /**
- * Khôi phục dữ liệu bền vững từ Server Disk (/api/state) hoặc IndexedDB khi vừa tải lại trang (Reload).
- * Đảm bảo ngay cả khi ảnh dung lượng lớn vượt quá localStorage hoặc người dùng F5 / đóng mở lại trình duyệt,
- * toàn bộ dữ liệu đã lưu đều được khôi phục đầy đủ 100%.
+ * Khôi phục và tự động đồng bộ dữ liệu MỚI NHẤT từ cả 3 nguồn (localStorage, IndexedDB, Server Disk)
+ * khi tải lại trang (Reload).
+ * So sánh dấu thời gian `updatedAt` của từng khóa ở 3 nơi để đảm bảo DỮ LIỆU ĐÃ UPDATE LUÔN ĐƯỢC CHỌN,
+ * tuyệt đối không bao giờ bị dữ liệu cũ ghi đè.
  */
 export const hydratePersistentState = async (): Promise<Partial<FullAppState> | null> => {
-  // 1. Kiểm tra dữ liệu đã lưu trên ổ cứng Server (/api/state) và IndexedDB
+  migrateLegacyKeysIfNeeded();
+
   const [
     serverState,
     idbClassInfo,
@@ -341,91 +548,141 @@ export const hydratePersistentState = async (): Promise<Partial<FullAppState> | 
     idbPolicies
   ] = await Promise.all([
     fetchServerState(),
-    loadFromIDB<ClassInfo>(STORAGE_KEYS.CLASS_INFO),
-    loadFromIDB<Student[]>(STORAGE_KEYS.STUDENTS),
-    loadFromIDB<AttendanceRecord[]>(STORAGE_KEYS.ATTENDANCE),
-    loadFromIDB<ViolationRecord[]>(STORAGE_KEYS.VIOLATIONS),
-    loadFromIDB<RewardRecord[]>(STORAGE_KEYS.REWARDS),
-    loadFromIDB<GalleryPhoto[]>(STORAGE_KEYS.GALLERY_PHOTOS),
-    loadFromIDB<ConductEvaluation[]>(STORAGE_KEYS.CONDUCT),
-    loadFromIDB<ParentContact[]>(STORAGE_KEYS.PARENTS),
-    loadFromIDB<PolicyDocumentItem[]>(STORAGE_KEYS.POLICIES)
+    loadFromIDBWithMeta<ClassInfo>(STORAGE_KEYS.CLASS_INFO),
+    loadFromIDBWithMeta<Student[]>(STORAGE_KEYS.STUDENTS),
+    loadFromIDBWithMeta<AttendanceRecord[]>(STORAGE_KEYS.ATTENDANCE),
+    loadFromIDBWithMeta<ViolationRecord[]>(STORAGE_KEYS.VIOLATIONS),
+    loadFromIDBWithMeta<RewardRecord[]>(STORAGE_KEYS.REWARDS),
+    loadFromIDBWithMeta<GalleryPhoto[]>(STORAGE_KEYS.GALLERY_PHOTOS),
+    loadFromIDBWithMeta<ConductEvaluation[]>(STORAGE_KEYS.CONDUCT),
+    loadFromIDBWithMeta<ParentContact[]>(STORAGE_KEYS.PARENTS),
+    loadFromIDBWithMeta<PolicyDocumentItem[]>(STORAGE_KEYS.POLICIES)
   ]);
 
-  const pickBest = <T>(key: string, idbVal: T | undefined): T | undefined => {
-    // Ưu tiên IndexedDB hoặc Server State nếu có, hoặc dữ liệu hiện có trong localStorage
-    const serverVal = serverState ? (serverState[key] as T | undefined) : undefined;
+  const localTimestamps = getLocalTimestamps();
+  const serverTimestamps: Record<string, number> = (serverState && serverState._timestamps) || {};
+  const resolvedTimestamps: Record<string, number> = {};
+
+  const pickNewest = <T>(
+    key: string,
+    idbRec: TimestampedRecord<T> | undefined
+  ): T | undefined => {
+    const candidates: { value: T; ts: number; source: string }[] = [];
+
+    // 1. Ứng viên từ localStorage
     const localRaw = localStorage.getItem(key);
-    let localVal: T | undefined = undefined;
     if (localRaw !== null) {
       try {
-        localVal = JSON.parse(localRaw) as T;
+        const parsed = JSON.parse(localRaw) as T;
+        if (parsed !== undefined && parsed !== null) {
+          // Nếu dữ liệu cũ trong localStorage chưa có timestamp trong bảng v2, gán ts = 2 để ưu tiên hơn bản ghi IDB không rõ nguồn (ts = 1)
+          const localTs = localTimestamps[key] ?? 2;
+          candidates.push({ value: parsed, ts: localTs, source: 'local' });
+        }
       } catch {
         // ignore
       }
     }
 
-    // Đối với GalleryPhotos hoặc danh sách: nếu IndexedDB / Server có dữ liệu khi localStorage bị đầy hoặc trống
-    if (idbVal !== undefined) return idbVal;
-    if (serverVal !== undefined) return serverVal;
-    return localVal;
+    // 2. Ứng viên từ IndexedDB
+    if (idbRec && idbRec.value !== undefined && idbRec.value !== null) {
+      candidates.push({ value: idbRec.value, ts: idbRec.updatedAt || 1, source: 'idb' });
+    }
+
+    // 3. Ứng viên từ Server Disk (/api/state)
+    const serverVal = serverState ? (serverState[key] as T | undefined) : undefined;
+    if (serverVal !== undefined && serverVal !== null) {
+      const sTs = serverTimestamps[key] || 1;
+      candidates.push({ value: serverVal, ts: sTs, source: 'server' });
+    }
+
+    if (candidates.length === 0) return undefined;
+
+    // Sắp xếp giảm dần theo timestamp (dữ liệu được update gần nhất đứng đầu)
+    candidates.sort((a, b) => b.ts - a.ts);
+    const winner = candidates[0];
+    const finalTs = winner.ts > 2 ? winner.ts : Date.now();
+    resolvedTimestamps[key] = finalTs;
+    return winner.value;
   };
 
   const hydrated: Partial<FullAppState> = {};
 
-  const bestClassInfo = pickBest<ClassInfo>(STORAGE_KEYS.CLASS_INFO, idbClassInfo);
+  const bestClassInfo = pickNewest<ClassInfo>(STORAGE_KEYS.CLASS_INFO, idbClassInfo);
   if (bestClassInfo) hydrated.classInfo = bestClassInfo;
 
-  const bestStudents = pickBest<Student[]>(STORAGE_KEYS.STUDENTS, idbStudents);
+  const bestStudents = pickNewest<Student[]>(STORAGE_KEYS.STUDENTS, idbStudents);
   if (Array.isArray(bestStudents)) hydrated.students = bestStudents;
 
-  const bestAttendance = pickBest<AttendanceRecord[]>(STORAGE_KEYS.ATTENDANCE, idbAttendance);
+  const bestAttendance = pickNewest<AttendanceRecord[]>(STORAGE_KEYS.ATTENDANCE, idbAttendance);
   if (Array.isArray(bestAttendance)) hydrated.attendance = bestAttendance;
 
-  const bestViolations = pickBest<ViolationRecord[]>(STORAGE_KEYS.VIOLATIONS, idbViolations);
+  const bestViolations = pickNewest<ViolationRecord[]>(STORAGE_KEYS.VIOLATIONS, idbViolations);
   if (Array.isArray(bestViolations)) hydrated.violations = bestViolations;
 
-  const bestRewards = pickBest<RewardRecord[]>(STORAGE_KEYS.REWARDS, idbRewards);
+  const bestRewards = pickNewest<RewardRecord[]>(STORAGE_KEYS.REWARDS, idbRewards);
   if (Array.isArray(bestRewards)) hydrated.rewards = bestRewards;
 
-  const bestGallery = pickBest<GalleryPhoto[]>(STORAGE_KEYS.GALLERY_PHOTOS, idbGalleryPhotos);
+  const bestGallery = pickNewest<GalleryPhoto[]>(STORAGE_KEYS.GALLERY_PHOTOS, idbGalleryPhotos);
   if (Array.isArray(bestGallery)) hydrated.galleryPhotos = bestGallery;
 
-  const bestConduct = pickBest<ConductEvaluation[]>(STORAGE_KEYS.CONDUCT, idbConduct);
+  const bestConduct = pickNewest<ConductEvaluation[]>(STORAGE_KEYS.CONDUCT, idbConduct);
   if (Array.isArray(bestConduct)) hydrated.conduct = bestConduct;
 
-  const bestParents = pickBest<ParentContact[]>(STORAGE_KEYS.PARENTS, idbParents);
+  const bestParents = pickNewest<ParentContact[]>(STORAGE_KEYS.PARENTS, idbParents);
   if (Array.isArray(bestParents)) hydrated.parents = bestParents;
 
-  const bestPolicies = pickBest<PolicyDocumentItem[]>(STORAGE_KEYS.POLICIES, idbPolicies);
+  const bestPolicies = pickNewest<PolicyDocumentItem[]>(STORAGE_KEYS.POLICIES, idbPolicies);
   if (Array.isArray(bestPolicies)) hydrated.policies = bestPolicies;
 
-  // Đồng bộ ngược lại vào localStorage (những mục vừa khôi phục từ Server/IndexedDB)
-  Object.entries({
-    [STORAGE_KEYS.CLASS_INFO]: hydrated.classInfo,
-    [STORAGE_KEYS.STUDENTS]: hydrated.students,
-    [STORAGE_KEYS.ATTENDANCE]: hydrated.attendance,
-    [STORAGE_KEYS.VIOLATIONS]: hydrated.violations,
-    [STORAGE_KEYS.REWARDS]: hydrated.rewards,
-    [STORAGE_KEYS.GALLERY_PHOTOS]: hydrated.galleryPhotos,
-    [STORAGE_KEYS.CONDUCT]: hydrated.conduct,
-    [STORAGE_KEYS.PARENTS]: hydrated.parents,
-    [STORAGE_KEYS.POLICIES]: hydrated.policies
-  }).forEach(([k, val]) => {
-    if (val !== undefined) {
-      saveToIDB(k, val);
+  // Chuẩn hóa toàn bộ dữ liệu sau khi chọn bản mới nhất để mọi thông tin (sĩ số, tên học sinh, tổ) đồng bộ 100%
+  if (Object.keys(hydrated).length > 0) {
+    const normalized = normalizeLoadedState({
+      classInfo: hydrated.classInfo,
+      students: hydrated.students,
+      attendance: hydrated.attendance,
+      violations: hydrated.violations,
+      rewards: hydrated.rewards,
+      galleryPhotos: hydrated.galleryPhotos,
+      conduct: hydrated.conduct,
+      parents: hydrated.parents,
+      policies: hydrated.policies
+    });
+
+    const syncMap: Record<string, any> = {
+      [STORAGE_KEYS.CLASS_INFO]: normalized.classInfo,
+      [STORAGE_KEYS.STUDENTS]: normalized.students,
+      [STORAGE_KEYS.ATTENDANCE]: normalized.attendance,
+      [STORAGE_KEYS.VIOLATIONS]: normalized.violations,
+      [STORAGE_KEYS.REWARDS]: normalized.rewards,
+      [STORAGE_KEYS.GALLERY_PHOTOS]: normalized.galleryPhotos,
+      [STORAGE_KEYS.CONDUCT]: normalized.conduct,
+      [STORAGE_KEYS.PARENTS]: normalized.parents,
+      [STORAGE_KEYS.POLICIES]: normalized.policies
+    };
+
+    // Ghi đè bản mới nhất đã chuẩn hóa vào cả 3 lớp lưu trữ để xóa bỏ hoàn toàn dữ liệu cũ
+    Object.entries(syncMap).forEach(([k, val]) => {
+      const ts = resolvedTimestamps[k] || Date.now();
+      setLocalTimestamp(k, ts);
+      saveToIDB(k, val, ts);
       try {
         localStorage.setItem(k, JSON.stringify(val));
       } catch {
         // ignore quota error on localStorage since IDB and Server have it
       }
-    }
-  });
+    });
 
-  return Object.keys(hydrated).length > 0 ? hydrated : null;
+    syncFullStateToServer(syncMap, resolvedTimestamps);
+
+    return normalized;
+  }
+
+  return null;
 };
 
 export const resetAllDataToDefault = () => {
+  localStorage.removeItem(LEGACY_STUDENTS_KEY);
   saveToStorage(STORAGE_KEYS.CLASS_INFO, INITIAL_CLASS_INFO);
   saveToStorage(STORAGE_KEYS.STUDENTS, INITIAL_STUDENTS);
   saveToStorage(STORAGE_KEYS.ATTENDANCE, INITIAL_ATTENDANCE);
@@ -452,6 +709,3 @@ export const resetAllDataToDefault = () => {
 };
 
 export { STORAGE_KEYS };
-
-
-

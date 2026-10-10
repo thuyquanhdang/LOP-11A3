@@ -263,13 +263,11 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
               onClick={() => {
-                // Save current students list to storage and show confirmation
-                try {
-                  localStorage.setItem('tlcn_students_v1', JSON.stringify(students));
-                } catch (e) {
-                  console.error(e);
+                // Save current students list to official storage key and trigger parent update
+                if (students.length > 0) {
+                  onUpdateStudent(students[0]);
                 }
-                showSaveToast('Đã lưu mọi thay đổi danh sách học sinh lớp 11A3!');
+                showSaveToast('Đã tự động cập nhật và lưu mọi thay đổi danh sách học sinh lớp 11A3!');
               }}
               className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs hover:shadow-md transition-all flex items-center gap-2 cursor-pointer"
               title="Lưu toàn bộ thay đổi hiện tại"

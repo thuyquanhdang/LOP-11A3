@@ -20,6 +20,8 @@ import {
   saveToStorage, 
   loadFromStorage,
   syncFullStateToServer,
+  subscribeToStorageUpdates,
+  getLastSavedTimestamp,
   STORAGE_KEYS, 
   resetAllDataToDefault 
 } from './utils/storage';
@@ -53,6 +55,7 @@ export default function App() {
   const [selectedStudentForModal, setSelectedStudentForModal] = useState<Student | null>(null);
   const [galleryInitialTarget, setGalleryInitialTarget] = useState<'all' | GalleryTarget>('all');
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<number>(() => getLastSavedTimestamp());
 
   // Guard to prevent initial render from overwriting Server/IndexedDB before hydration finishes
   const isHydratedRef = useRef(false);
@@ -70,16 +73,17 @@ export default function App() {
   const [parents, setParents] = useState<ParentContact[]>(initialData.parents);
   const [policies, setPolicies] = useState<PolicyDocumentItem[]>(initialData.policies);
 
-  const checkSaveResult = (res: { success: boolean; error?: string }) => {
+  const checkSaveResult = (res: { success: boolean; error?: string; updatedAt?: number }) => {
     if (!res.success && res.error) {
       setStorageError(res.error);
       return false;
     }
     setStorageError(null);
+    setLastSyncedAt(res.updatedAt || Date.now());
     return true;
   };
 
-  // On mount (Reload), hydrate from IndexedDB & Server Disk (/api/state) so no data or photo is ever lost
+  // On mount (Reload), hydrate from IndexedDB & Server Disk (/api/state) using newest-wins timestamps
   useEffect(() => {
     let mounted = true;
     hydratePersistentState()
@@ -106,6 +110,7 @@ export default function App() {
           setConduct(normalized.conduct);
           setParents(normalized.parents);
           setPolicies(normalized.policies);
+          setLastSyncedAt(Date.now());
         } else {
           // First ever run: persist initial state to all layers
           syncFullStateToServer({
@@ -128,6 +133,23 @@ export default function App() {
     return () => {
       mounted = false;
     };
+  }, []);
+
+  // Subscribe to live BroadcastChannel / cross-tab updates so multiple tabs stay updated automatically
+  useEffect(() => {
+    const unsubscribe = subscribeToStorageUpdates((key, value, updatedAt) => {
+      setLastSyncedAt(updatedAt);
+      if (key === STORAGE_KEYS.CLASS_INFO && value) setClassInfo(value);
+      if (key === STORAGE_KEYS.STUDENTS && Array.isArray(value)) setStudents(value);
+      if (key === STORAGE_KEYS.ATTENDANCE && Array.isArray(value)) setAttendance(value);
+      if (key === STORAGE_KEYS.VIOLATIONS && Array.isArray(value)) setViolations(value);
+      if (key === STORAGE_KEYS.REWARDS && Array.isArray(value)) setRewards(value);
+      if (key === STORAGE_KEYS.GALLERY_PHOTOS && Array.isArray(value)) setGalleryPhotos(value);
+      if (key === STORAGE_KEYS.CONDUCT && Array.isArray(value)) setConduct(value);
+      if (key === STORAGE_KEYS.PARENTS && Array.isArray(value)) setParents(value);
+      if (key === STORAGE_KEYS.POLICIES && Array.isArray(value)) setPolicies(value);
+    });
+    return unsubscribe;
   }, []);
 
   // Persist activeTab
@@ -228,11 +250,87 @@ export default function App() {
     });
   };
 
+  // Automatically propagate student updates (name, team, conductRating, etc.) across all related tables so no old data remains
   const handleUpdateStudent = (updatedStudent: Student) => {
     setStudents(prev => {
       const next = prev.map(s => s.id === updatedStudent.id ? updatedStudent : s);
       syncStudentsAndClassCounts(next);
       return next;
+    });
+
+    setRewards(prev => {
+      let changed = false;
+      const next = prev.map(r => {
+        if (r.studentId === updatedStudent.id) {
+          const nextTeam = updatedStudent.team || r.team;
+          if (r.studentName !== updatedStudent.fullName || r.team !== nextTeam) {
+            changed = true;
+            return { ...r, studentName: updatedStudent.fullName, team: nextTeam };
+          }
+        }
+        return r;
+      });
+      if (changed) saveToStorage(STORAGE_KEYS.REWARDS, next);
+      return changed ? next : prev;
+    });
+
+    setViolations(prev => {
+      let changed = false;
+      const next = prev.map(v => {
+        if (v.studentId === updatedStudent.id && v.studentName !== updatedStudent.fullName) {
+          changed = true;
+          return { ...v, studentName: updatedStudent.fullName };
+        }
+        return v;
+      });
+      if (changed) saveToStorage(STORAGE_KEYS.VIOLATIONS, next);
+      return changed ? next : prev;
+    });
+
+    setConduct(prev => {
+      let changed = false;
+      const next = prev.map(c => {
+        if (c.studentId === updatedStudent.id) {
+          const nextGrade = updatedStudent.conductRating || c.overallGrade;
+          if (c.studentName !== updatedStudent.fullName || c.overallGrade !== nextGrade) {
+            changed = true;
+            return {
+              ...c,
+              studentName: updatedStudent.fullName,
+              overallGrade: nextGrade
+            };
+          }
+        }
+        return c;
+      });
+      if (changed) saveToStorage(STORAGE_KEYS.CONDUCT, next);
+      return changed ? next : prev;
+    });
+
+    setParents(prev => {
+      let changed = false;
+      const next = prev.map(p => {
+        if (p.studentId === updatedStudent.id && p.studentName !== updatedStudent.fullName) {
+          changed = true;
+          return { ...p, studentName: updatedStudent.fullName };
+        }
+        return p;
+      });
+      if (changed) saveToStorage(STORAGE_KEYS.PARENTS, next);
+      return changed ? next : prev;
+    });
+
+    setPolicies(prev => {
+      let changed = false;
+      const next = prev.map(pol => {
+        if (pol.studentId === updatedStudent.id && pol.studentName !== updatedStudent.fullName) {
+          changed = true;
+          return { ...pol, studentName: updatedStudent.fullName };
+        }
+        return pol;
+      });
+      if (changed) saveToStorage(STORAGE_KEYS.POLICIES, next);
+      return changed ? next : prev;
     });
   };
 
@@ -260,6 +358,11 @@ export default function App() {
     setPolicies(prev => {
       const next = prev.filter(p => p.studentId !== studentId);
       saveToStorage(STORAGE_KEYS.POLICIES, next);
+      return next;
+    });
+    setConduct(prev => {
+      const next = prev.filter(c => c.studentId !== studentId);
+      saveToStorage(STORAGE_KEYS.CONDUCT, next);
       return next;
     });
   };
@@ -359,10 +462,32 @@ export default function App() {
     });
   };
 
-  // Conduct Handlers
+  // Conduct Handlers - also auto-updates conductRating on each Student record so Student list and Conduct table never go out of sync
   const handleUpdateConduct = (newConduct: ConductEvaluation[]) => {
     setConduct(newConduct);
     checkSaveResult(saveToStorage(STORAGE_KEYS.CONDUCT, newConduct));
+
+    const gradeMap = new Map<string, ConductEvaluation>();
+    newConduct.forEach(c => gradeMap.set(c.studentId, c));
+
+    setStudents(prev => {
+      let changed = false;
+      const next = prev.map(s => {
+        const evalItem = gradeMap.get(s.id);
+        if (evalItem && evalItem.overallGrade && s.conductRating !== evalItem.overallGrade) {
+          changed = true;
+          return {
+            ...s,
+            conductRating: evalItem.overallGrade
+          };
+        }
+        return s;
+      });
+      if (changed) {
+        saveToStorage(STORAGE_KEYS.STUDENTS, next);
+      }
+      return changed ? next : prev;
+    });
   };
 
   // Parent Contacts Handlers
@@ -487,6 +612,7 @@ export default function App() {
             setPolicies(parsed.policies);
             saveToStorage(STORAGE_KEYS.POLICIES, parsed.policies);
           }
+          setLastSyncedAt(Date.now());
           alert('Khôi phục dữ liệu từ tệp thành công!');
         } else {
           alert('Tệp dữ liệu không hợp lệ!');
@@ -509,6 +635,7 @@ export default function App() {
     setConduct(defaults.conduct);
     setParents(defaults.parents);
     setPolicies(defaults.policies);
+    setLastSyncedAt(Date.now());
   };
 
   const handleSaveAllChanges = (): boolean => {
@@ -529,6 +656,7 @@ export default function App() {
       return false;
     }
     setStorageError(null);
+    setLastSyncedAt(Date.now());
     return true;
   };
 
@@ -554,6 +682,7 @@ export default function App() {
           classInfo={classInfo}
           onSaveAllChanges={handleSaveAllChanges}
           storageError={storageError}
+          lastSyncedAt={lastSyncedAt}
         />
 
         {/* Storage Error Banner if saving fails */}

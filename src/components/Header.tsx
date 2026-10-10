@@ -21,6 +21,7 @@ interface HeaderProps {
   onQuickAddStudent?: () => void;
   onSaveAllChanges?: () => boolean | void;
   storageError?: string | null;
+  lastSyncedAt?: number;
 }
 
 const TAB_TITLES: Record<ActiveTab, { title: string; subtitle: string }> = {
@@ -44,7 +45,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenMobileMenu,
   classInfo,
   onSaveAllChanges,
-  storageError
+  storageError,
+  lastSyncedAt
 }) => {
   const [savedNotice, setSavedNotice] = useState(false);
   const [saveErrorNotice, setSaveErrorNotice] = useState(false);
@@ -55,6 +57,10 @@ export const Header: React.FC<HeaderProps> = ({
   const daysOfWeek = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
   const dayName = daysOfWeek[today.getDay()];
   const dateFormatted = `${dayName}, ngày ${today.getDate()} tháng ${today.getMonth() + 1} năm ${today.getFullYear()}`;
+
+  const syncedTimeStr = lastSyncedAt
+    ? new Date(lastSyncedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : '';
 
   const handleSaveClick = () => {
     if (onSaveAllChanges) {
@@ -101,8 +107,17 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right: Date Info & Quick Actions */}
         <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
+          {/* Auto-sync status badge */}
+          <div
+            className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-200"
+            title="Mọi thay đổi đều được tự động cập nhật và lưu ngay lập tức"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span>Tự động cập nhật{syncedTimeStr ? ` (${syncedTimeStr})` : ''}</span>
+          </div>
+
           {/* School & Date pill */}
-          <div className="hidden md:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-100/90 text-slate-600 text-xs font-medium border border-slate-200">
+          <div className="hidden lg:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-100/90 text-slate-600 text-xs font-medium border border-slate-200">
             <Calendar className="w-3.5 h-3.5 text-slate-500" />
             <span>{dateFormatted}</span>
           </div>
