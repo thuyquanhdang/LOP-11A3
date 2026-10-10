@@ -7,7 +7,8 @@ import {
   ParentContact, 
   PolicyDocumentItem, 
   ClassInfo,
-  SubjectScore
+  SubjectScore,
+  GalleryPhoto
 } from './types';
 
 export const INITIAL_CLASS_INFO: ClassInfo = {
@@ -1383,3 +1384,173 @@ export const INITIAL_POLICY_DOCUMENTS: PolicyDocumentItem[] = [
     notes: 'GVCN đã nhắc nhở phụ huynh gửi bổ sung trước ngày 15/10'
   }
 ];
+
+export const INITIAL_GALLERY_PHOTOS: GalleryPhoto[] = [
+  {
+    id: 'photo-11a3-class-01',
+    title: 'Tập thể Lớp 11A3 & GVCN Đặng Thị Thùy Quanh ngày Khai giảng năm học 2026–2027',
+    description: 'Khoảnh khắc rạng rỡ của 38 thành viên lớp 11A3 cùng cô giáo chủ nhiệm Đặng Thị Thùy Quanh tại sân trường PTDTNT THCS và THPT Vân Canh.',
+    imageUrl: `data:image/svg+xml;utf8,${encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500">
+        <defs>
+          <linearGradient id="bgClass" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#1e3a8a"/>
+            <stop offset="50%" stop-color="#312e81"/>
+            <stop offset="100%" stop-color="#4f46e5"/>
+          </linearGradient>
+        </defs>
+        <rect width="800" height="500" fill="url(#bgClass)"/>
+        <circle cx="700" cy="90" r="110" fill="#fbbf24" opacity="0.18"/>
+        <circle cx="100" cy="420" r="140" fill="#38bdf8" opacity="0.15"/>
+        <rect x="50" y="45" width="700" height="410" rx="24" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.25" stroke-width="2"/>
+        <text x="400" y="125" font-family="Arial, sans-serif" font-size="22" font-weight="bold" fill="#fde047" text-anchor="middle">TRƯỜNG PTDTNT THCS VÀ THPT VÂN CANH</text>
+        <text x="400" y="185" font-family="Arial, sans-serif" font-size="40" font-weight="bold" fill="#ffffff" text-anchor="middle">KỈ NIỆM TẬP THỂ LỚP 11A3</text>
+        <text x="400" y="235" font-family="Arial, sans-serif" font-size="22" fill="#e0e7ff" text-anchor="middle">GVCN: Cô Đặng Thị Thùy Quanh • Sĩ số: 38 Học sinh</text>
+        <rect x="220" y="275" width="360" height="54" rx="27" fill="#fbbf24"/>
+        <text x="400" y="310" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#1e1b4b" text-anchor="middle">ĐOÀN KẾT – CHĂM NGOAN – HỌC TỐT</text>
+        <text x="400" y="395" font-family="Arial, sans-serif" font-size="16" fill="#cbd5e1" text-anchor="middle">Năm học 2026 – 2027 • Phòng 203 Khu A</text>
+      </svg>
+    `)}`,
+    target: 'Tập thể lớp',
+    category: 'Kỉ niệm đáng nhớ',
+    date: '2026-09-05',
+    week: 1,
+    uploadedBy: 'GVCN Đặng Thị Thùy Quanh',
+    studentNames: ['Nguyễn Lương Tường Vy', 'Măng Lê Thùy Trang', 'Tập thể 38 học sinh 11A3'],
+    likes: 38,
+    isFeatured: true
+  },
+  {
+    id: 'photo-11a3-to1-01',
+    title: 'Tổ 1 – Nhóm tự học buổi tối & Phong trào Hoa điểm 10 tuần 4',
+    description: 'Tổ trưởng Nguyễn Lương Nhật Vỹ cùng các thành viên Tổ 1 sôi nổi thảo luận bài tập Toán và Tiếng Anh tại phòng tự học khu nội trú.',
+    imageUrl: `data:image/svg+xml;utf8,${encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500">
+        <defs>
+          <linearGradient id="bgTo1" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#1d4ed8"/>
+            <stop offset="100%" stop-color="#0284c7"/>
+          </linearGradient>
+        </defs>
+        <rect width="800" height="500" fill="url(#bgTo1)"/>
+        <circle cx="680" cy="110" r="95" fill="#ffffff" opacity="0.12"/>
+        <rect x="55" y="50" width="690" height="400" rx="22" fill="#ffffff" fill-opacity="0.1" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2"/>
+        <rect x="310" y="85" width="180" height="44" rx="22" fill="#dbeafe"/>
+        <text x="400" y="114" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#1e40af" text-anchor="middle">HOẠT ĐỘNG TỔ 1</text>
+        <text x="400" y="185" font-family="Arial, sans-serif" font-size="34" font-weight="bold" fill="#ffffff" text-anchor="middle">NHÓM TỰ HỌC &amp; HOA ĐIỂM 10</text>
+        <text x="400" y="235" font-family="Arial, sans-serif" font-size="21" fill="#e0f2fe" text-anchor="middle">Tổ trưởng: Nguyễn Lương Nhật Vỹ</text>
+        <text x="400" y="285" font-family="Arial, sans-serif" font-size="18" fill="#bae6fd" text-anchor="middle">Tiêu biểu: Nguyễn Thị Huyền Giang • Đinh Trần Mai Hiền • Chu Lan Dinh</text>
+        <rect x="250" y="330" width="300" height="48" rx="14" fill="#fde047"/>
+        <text x="400" y="361" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#0f172a" text-anchor="middle">★ 100% Thành viên đạt giờ học Tốt</text>
+      </svg>
+    `)}`,
+    target: 'Tổ 1',
+    category: 'Học tập & Giờ học tốt',
+    date: '2026-09-28',
+    week: 4,
+    uploadedBy: 'Nguyễn Lương Nhật Vỹ (Tổ trưởng Tổ 1)',
+    studentNames: ['Nguyễn Lương Nhật Vỹ', 'Nguyễn Thị Huyền Giang', 'Đinh Trần Mai Hiền', 'Chu Lan Dinh'],
+    likes: 24,
+    isFeatured: true
+  },
+  {
+    id: 'photo-11a3-to2-01',
+    title: 'Tổ 2 – Ra quân trực nhật & Chăm sóc bồn hoa lớp 11A3 Xanh - Sạch - Đẹp',
+    description: 'Các thành viên Tổ 2 под sự điều hành của Tổ trưởng La O Thị Kim Thủy hoàn thành xuất sắc vệ sinh lớp học và hành lang Phòng 203.',
+    imageUrl: `data:image/svg+xml;utf8,${encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500">
+        <defs>
+          <linearGradient id="bgTo2" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#047857"/>
+            <stop offset="100%" stop-color="#0d9488"/>
+          </linearGradient>
+        </defs>
+        <rect width="800" height="500" fill="url(#bgTo2)"/>
+        <circle cx="120" cy="100" r="90" fill="#ffffff" opacity="0.12"/>
+        <rect x="55" y="50" width="690" height="400" rx="22" fill="#ffffff" fill-opacity="0.1" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2"/>
+        <rect x="310" y="85" width="180" height="44" rx="22" fill="#d1fae5"/>
+        <text x="400" y="114" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#065f46" text-anchor="middle">HOẠT ĐỘNG TỔ 2</text>
+        <text x="400" y="185" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="#ffffff" text-anchor="middle">LỚP HỌC XANH – SẠCH – ĐẸP</text>
+        <text x="400" y="235" font-family="Arial, sans-serif" font-size="21" fill="#ccfbf1" text-anchor="middle">Tổ trưởng: La O Thị Kim Thủy</text>
+        <text x="400" y="285" font-family="Arial, sans-serif" font-size="18" fill="#a7f3d0" text-anchor="middle">Tiêu biểu: Nguyễn Trương Ánh Nguyệt • Mang Thị Kim Ngân</text>
+        <rect x="240" y="330" width="320" height="48" rx="14" fill="#ffffff"/>
+        <text x="400" y="361" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#065f46" text-anchor="middle">🌿 Giải Nhất Trực Nhật &amp; Nội Trú Tuần 4</text>
+      </svg>
+    `)}`,
+    target: 'Tổ 2',
+    category: 'Lao động & Trực nhật',
+    date: '2026-10-02',
+    week: 4,
+    uploadedBy: 'La O Thị Kim Thủy (Tổ trưởng Tổ 2)',
+    studentNames: ['La O Thị Kim Thủy', 'Nguyễn Trương Ánh Nguyệt'],
+    likes: 21,
+    isFeatured: false
+  },
+  {
+    id: 'photo-11a3-to3-01',
+    title: 'Tổ 3 – Tập luyện Múa cồng chiêng & Thi đấu Kéo co Hội thao cấp trường',
+    description: 'Khoảnh khắc sôi động của Tổ 3 cùng Tổ trưởng Đinh Thị Hường trong trang phục truyền thống và thi đấu thể thao đầy nhiệt huyết.',
+    imageUrl: `data:image/svg+xml;utf8,${encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500">
+        <defs>
+          <linearGradient id="bgTo3" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#be123c"/>
+            <stop offset="100%" stop-color="#db2777"/>
+          </linearGradient>
+        </defs>
+        <rect width="800" height="500" fill="url(#bgTo3)"/>
+        <circle cx="670" cy="390" r="110" fill="#ffffff" opacity="0.12"/>
+        <rect x="55" y="50" width="690" height="400" rx="22" fill="#ffffff" fill-opacity="0.1" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2"/>
+        <rect x="310" y="85" width="180" height="44" rx="22" fill="#ffe4e6"/>
+        <text x="400" y="114" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#9f1239" text-anchor="middle">HOẠT ĐỘNG TỔ 3</text>
+        <text x="400" y="185" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="#ffffff" text-anchor="middle">VĂN NGHỆ &amp; HỘI THAO TRUYỀN THỐNG</text>
+        <text x="400" y="235" font-family="Arial, sans-serif" font-size="21" fill="#ffe4e6" text-anchor="middle">Tổ trưởng: Đinh Thị Hường</text>
+        <text x="400" y="285" font-family="Arial, sans-serif" font-size="18" fill="#fecdd3" text-anchor="middle">Tiết mục Múa Cồng Chiêng &amp; Đội Kéo Co Tổ 3</text>
+        <rect x="235" y="330" width="330" height="48" rx="14" fill="#fde047"/>
+        <text x="400" y="361" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#881337" text-anchor="middle">🏆 Giải Nhất Hội Thao &amp; Văn Nghệ</text>
+      </svg>
+    `)}`,
+    target: 'Tổ 3',
+    category: 'Văn nghệ & Thể thao',
+    date: '2026-10-05',
+    week: 4,
+    uploadedBy: 'Đinh Thị Hường (Tổ trưởng Tổ 3)',
+    studentNames: ['Đinh Thị Hường', 'Nguyễn Thị Phương Thảo'],
+    likes: 27,
+    isFeatured: true
+  },
+  {
+    id: 'photo-11a3-to4-01',
+    title: 'Tổ 4 – Sinh hoạt chuyên đề Đoàn thanh niên & Giờ tự học kiểu mẫu',
+    description: 'Lớp trưởng Nguyễn Lương Tường Vy và Tổ trưởng Tổ 4 Nguyễn Vũ Thị Phương Trâm tổ chức sinh hoạt câu lạc bộ học tập đầu tuần.',
+    imageUrl: `data:image/svg+xml;utf8,${encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500">
+        <defs>
+          <linearGradient id="bgTo4" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#6d28d9"/>
+            <stop offset="100%" stop-color="#4f46e5"/>
+          </linearGradient>
+        </defs>
+        <rect width="800" height="500" fill="url(#bgTo4)"/>
+        <circle cx="140" cy="380" r="105" fill="#ffffff" opacity="0.12"/>
+        <rect x="55" y="50" width="690" height="400" rx="22" fill="#ffffff" fill-opacity="0.1" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2"/>
+        <rect x="310" y="85" width="180" height="44" rx="22" fill="#ede9fe"/>
+        <text x="400" y="114" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#5b21b6" text-anchor="middle">HOẠT ĐỘNG TỔ 4</text>
+        <text x="400" y="185" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="#ffffff" text-anchor="middle">SINH HOẠT CHI ĐOÀN &amp; TỰ HỌC NỘI TRÚ</text>
+        <text x="400" y="235" font-family="Arial, sans-serif" font-size="21" fill="#ede9fe" text-anchor="middle">Tổ trưởng: Nguyễn Vũ Thị Phương Trâm • Lớp trưởng: Tường Vy</text>
+        <text x="400" y="285" font-family="Arial, sans-serif" font-size="18" fill="#ddd6fe" text-anchor="middle">100% Thành viên Tổ 4 chuẩn bị bài đầy đủ &amp; 0 vi phạm</text>
+        <rect x="240" y="330" width="320" height="48" rx="14" fill="#fbbf24"/>
+        <text x="400" y="361" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#2e1065" text-anchor="middle">⭐ Tổ Kiểu Mẫu Dẫn Đầu Thi Đua</text>
+      </svg>
+    `)}`,
+    target: 'Tổ 4',
+    category: 'Sinh hoạt lớp & Đoàn - Đội',
+    date: '2026-10-08',
+    week: 4,
+    uploadedBy: 'Nguyễn Vũ Thị Phương Trâm (Tổ trưởng Tổ 4)',
+    studentNames: ['Nguyễn Vũ Thị Phương Trâm', 'Nguyễn Lương Tường Vy', 'Măng Lê Thùy Trang'],
+    likes: 29,
+    isFeatured: true
+  }
+];
+

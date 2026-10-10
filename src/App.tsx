@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ActiveTab, 
   Student, 
@@ -8,13 +8,18 @@ import {
   ConductEvaluation, 
   ParentContact, 
   PolicyDocumentItem, 
-  ClassInfo 
+  ClassInfo,
+  GalleryPhoto,
+  GalleryTarget
 } from './types';
 
 import { 
   getInitialAppState, 
+  hydratePersistentState,
+  normalizeLoadedState,
   saveToStorage, 
   loadFromStorage,
+  syncFullStateToServer,
   STORAGE_KEYS, 
   resetAllDataToDefault 
 } from './utils/storage';
@@ -26,6 +31,7 @@ import { StudentsView } from './components/StudentsView';
 import { AttendanceView } from './components/AttendanceView';
 import { ViolationsView } from './components/ViolationsView';
 import { RewardsView } from './components/RewardsView';
+import { GalleryView } from './components/GalleryView';
 import { ConductView } from './components/ConductView';
 import { ParentsView } from './components/ParentsView';
 import { PoliciesView } from './components/PoliciesView';
@@ -38,16 +44,20 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     const savedTab = loadFromStorage<ActiveTab>(STORAGE_KEYS.ACTIVE_TAB, 'dashboard');
     const validTabs: ActiveTab[] = [
-      'dashboard', 'students', 'attendance', 'violations', 'rewards',
+      'dashboard', 'students', 'attendance', 'violations', 'rewards', 'gallery',
       'conduct', 'parents', 'policies', 'reports', 'ai-assistant', 'settings'
     ];
     return validTabs.includes(savedTab) ? savedTab : 'dashboard';
   });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [selectedStudentForModal, setSelectedStudentForModal] = useState<Student | null>(null);
+  const [galleryInitialTarget, setGalleryInitialTarget] = useState<'all' | GalleryTarget>('all');
   const [storageError, setStorageError] = useState<string | null>(null);
 
-  // App Domain State loaded from localStorage
+  // Guard to prevent initial render from overwriting Server/IndexedDB before hydration finishes
+  const isHydratedRef = useRef(false);
+
+  // App Domain State loaded from localStorage synchronously first
   const [initialData] = useState(() => getInitialAppState());
   
   const [classInfo, setClassInfo] = useState<ClassInfo>(initialData.classInfo);
@@ -55,6 +65,7 @@ export default function App() {
   const [attendance, setAttendance] = useState<AttendanceRecord[]>(initialData.attendance);
   const [violations, setViolations] = useState<ViolationRecord[]>(initialData.violations);
   const [rewards, setRewards] = useState<RewardRecord[]>(initialData.rewards);
+  const [galleryPhotos, setGalleryPhotos] = useState<GalleryPhoto[]>(initialData.galleryPhotos);
   const [conduct, setConduct] = useState<ConductEvaluation[]>(initialData.conduct);
   const [parents, setParents] = useState<ParentContact[]>(initialData.parents);
   const [policies, setPolicies] = useState<PolicyDocumentItem[]>(initialData.policies);
@@ -68,41 +79,105 @@ export default function App() {
     return true;
   };
 
+  // On mount (Reload), hydrate from IndexedDB & Server Disk (/api/state) so no data or photo is ever lost
+  useEffect(() => {
+    let mounted = true;
+    hydratePersistentState()
+      .then((hydrated) => {
+        if (!mounted) return;
+        if (hydrated) {
+          const normalized = normalizeLoadedState({
+            classInfo: hydrated.classInfo ?? initialData.classInfo,
+            students: hydrated.students ?? initialData.students,
+            attendance: hydrated.attendance ?? initialData.attendance,
+            violations: hydrated.violations ?? initialData.violations,
+            rewards: hydrated.rewards ?? initialData.rewards,
+            galleryPhotos: hydrated.galleryPhotos ?? initialData.galleryPhotos,
+            conduct: hydrated.conduct ?? initialData.conduct,
+            parents: hydrated.parents ?? initialData.parents,
+            policies: hydrated.policies ?? initialData.policies,
+          });
+          setClassInfo(normalized.classInfo);
+          setStudents(normalized.students);
+          setAttendance(normalized.attendance);
+          setViolations(normalized.violations);
+          setRewards(normalized.rewards);
+          setGalleryPhotos(normalized.galleryPhotos);
+          setConduct(normalized.conduct);
+          setParents(normalized.parents);
+          setPolicies(normalized.policies);
+        } else {
+          // First ever run: persist initial state to all layers
+          syncFullStateToServer({
+            [STORAGE_KEYS.CLASS_INFO]: initialData.classInfo,
+            [STORAGE_KEYS.STUDENTS]: initialData.students,
+            [STORAGE_KEYS.ATTENDANCE]: initialData.attendance,
+            [STORAGE_KEYS.VIOLATIONS]: initialData.violations,
+            [STORAGE_KEYS.REWARDS]: initialData.rewards,
+            [STORAGE_KEYS.GALLERY_PHOTOS]: initialData.galleryPhotos,
+            [STORAGE_KEYS.CONDUCT]: initialData.conduct,
+            [STORAGE_KEYS.PARENTS]: initialData.parents,
+            [STORAGE_KEYS.POLICIES]: initialData.policies,
+          });
+        }
+        isHydratedRef.current = true;
+      })
+      .catch(() => {
+        isHydratedRef.current = true;
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   // Persist activeTab
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.ACTIVE_TAB, activeTab);
   }, [activeTab]);
 
-  // Auto-sync state to localStorage whenever it changes
+  // Auto-sync state to storage after hydration whenever state changes
   useEffect(() => {
+    if (!isHydratedRef.current) return;
     checkSaveResult(saveToStorage(STORAGE_KEYS.CLASS_INFO, classInfo));
   }, [classInfo]);
 
   useEffect(() => {
+    if (!isHydratedRef.current) return;
     checkSaveResult(saveToStorage(STORAGE_KEYS.STUDENTS, students));
   }, [students]);
 
   useEffect(() => {
+    if (!isHydratedRef.current) return;
     checkSaveResult(saveToStorage(STORAGE_KEYS.ATTENDANCE, attendance));
   }, [attendance]);
 
   useEffect(() => {
+    if (!isHydratedRef.current) return;
     checkSaveResult(saveToStorage(STORAGE_KEYS.VIOLATIONS, violations));
   }, [violations]);
 
   useEffect(() => {
+    if (!isHydratedRef.current) return;
     checkSaveResult(saveToStorage(STORAGE_KEYS.REWARDS, rewards));
   }, [rewards]);
 
   useEffect(() => {
+    if (!isHydratedRef.current) return;
+    checkSaveResult(saveToStorage(STORAGE_KEYS.GALLERY_PHOTOS, galleryPhotos));
+  }, [galleryPhotos]);
+
+  useEffect(() => {
+    if (!isHydratedRef.current) return;
     checkSaveResult(saveToStorage(STORAGE_KEYS.CONDUCT, conduct));
   }, [conduct]);
 
   useEffect(() => {
+    if (!isHydratedRef.current) return;
     checkSaveResult(saveToStorage(STORAGE_KEYS.PARENTS, parents));
   }, [parents]);
 
   useEffect(() => {
+    if (!isHydratedRef.current) return;
     checkSaveResult(saveToStorage(STORAGE_KEYS.POLICIES, policies));
   }, [policies]);
 
@@ -131,6 +206,7 @@ export default function App() {
     students: students.length,
     violations: violations.filter(v => !v.resolved).length,
     rewards: rewards.length,
+    gallery: galleryPhotos.length,
     attentionStudents: students.filter(s => s.needsAttention).length,
     pendingPolicies: policies.filter(p => !p.submitted).length
   };
@@ -258,6 +334,31 @@ export default function App() {
     }
   };
 
+  // Gallery Photos Handlers
+  const handleAddGalleryPhoto = (photo: GalleryPhoto) => {
+    setGalleryPhotos(prev => {
+      const next = [photo, ...prev];
+      checkSaveResult(saveToStorage(STORAGE_KEYS.GALLERY_PHOTOS, next));
+      return next;
+    });
+  };
+
+  const handleUpdateGalleryPhoto = (photo: GalleryPhoto) => {
+    setGalleryPhotos(prev => {
+      const next = prev.map(item => item.id === photo.id ? photo : item);
+      checkSaveResult(saveToStorage(STORAGE_KEYS.GALLERY_PHOTOS, next));
+      return next;
+    });
+  };
+
+  const handleDeleteGalleryPhoto = (id: string) => {
+    setGalleryPhotos(prev => {
+      const next = prev.filter(item => item.id !== id);
+      checkSaveResult(saveToStorage(STORAGE_KEYS.GALLERY_PHOTOS, next));
+      return next;
+    });
+  };
+
   // Conduct Handlers
   const handleUpdateConduct = (newConduct: ConductEvaluation[]) => {
     setConduct(newConduct);
@@ -328,6 +429,7 @@ export default function App() {
       attendance,
       violations,
       rewards,
+      galleryPhotos,
       conduct,
       parents,
       policies
@@ -369,6 +471,10 @@ export default function App() {
             setRewards(parsed.rewards);
             saveToStorage(STORAGE_KEYS.REWARDS, parsed.rewards);
           }
+          if (parsed.galleryPhotos && Array.isArray(parsed.galleryPhotos)) {
+            setGalleryPhotos(parsed.galleryPhotos);
+            saveToStorage(STORAGE_KEYS.GALLERY_PHOTOS, parsed.galleryPhotos);
+          }
           if (parsed.conduct) {
             setConduct(parsed.conduct);
             saveToStorage(STORAGE_KEYS.CONDUCT, parsed.conduct);
@@ -399,6 +505,7 @@ export default function App() {
     setAttendance(defaults.attendance);
     setViolations(defaults.violations);
     setRewards(defaults.rewards);
+    setGalleryPhotos(defaults.galleryPhotos);
     setConduct(defaults.conduct);
     setParents(defaults.parents);
     setPolicies(defaults.policies);
@@ -411,6 +518,7 @@ export default function App() {
       saveToStorage(STORAGE_KEYS.ATTENDANCE, attendance),
       saveToStorage(STORAGE_KEYS.VIOLATIONS, violations),
       saveToStorage(STORAGE_KEYS.REWARDS, rewards),
+      saveToStorage(STORAGE_KEYS.GALLERY_PHOTOS, galleryPhotos),
       saveToStorage(STORAGE_KEYS.CONDUCT, conduct),
       saveToStorage(STORAGE_KEYS.PARENTS, parents),
       saveToStorage(STORAGE_KEYS.POLICIES, policies),
@@ -523,11 +631,29 @@ export default function App() {
             <RewardsView
               students={students}
               rewards={rewards}
+              galleryPhotos={galleryPhotos}
               classInfo={classInfo}
               onAddReward={handleAddReward}
               onUpdateReward={handleUpdateReward}
               onDeleteReward={handleDeleteReward}
               onUpdateStudent={handleUpdateStudent}
+              onOpenFullGallery={(teamFilter) => {
+                setGalleryInitialTarget(teamFilter || 'all');
+                setActiveTab('gallery');
+              }}
+            />
+          )}
+
+          {activeTab === 'gallery' && (
+            <GalleryView
+              key={galleryInitialTarget}
+              students={students}
+              photos={galleryPhotos}
+              classInfo={classInfo}
+              onAddPhoto={handleAddGalleryPhoto}
+              onUpdatePhoto={handleUpdateGalleryPhoto}
+              onDeletePhoto={handleDeleteGalleryPhoto}
+              initialTargetFilter={galleryInitialTarget}
             />
           )}
 
@@ -591,3 +717,4 @@ export default function App() {
     </div>
   );
 }
+

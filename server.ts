@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
@@ -12,7 +13,41 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+// Allow large payloads (up to 50MB) so base64 uploaded photos are saved without limit issues
+app.use(express.json({ limit: '50mb' }));
+
+// Persistent server-side database file path
+const DATA_FILE_PATH = path.join(process.cwd(), 'app_persistent_state.json');
+
+function readServerState(): Record<string, any> | null {
+  try {
+    if (fs.existsSync(DATA_FILE_PATH)) {
+      const raw = fs.readFileSync(DATA_FILE_PATH, 'utf-8');
+      if (raw && raw.trim()) {
+        return JSON.parse(raw);
+      }
+    }
+  } catch (err) {
+    console.error('[Storage] Error reading server state file:', err);
+  }
+  return null;
+}
+
+function writeServerState(data: Record<string, any>): boolean {
+  try {
+    const existing = readServerState() || {};
+    const merged = {
+      ...existing,
+      ...data,
+      updatedAt: new Date().toISOString()
+    };
+    fs.writeFileSync(DATA_FILE_PATH, JSON.stringify(merged, null, 2), 'utf-8');
+    return true;
+  } catch (err) {
+    console.error('[Storage] Error writing server state file:', err);
+    return false;
+  }
+}
 
 // Lazy-initialize Gemini client
 let aiClient: GoogleGenAI | null = null;
@@ -27,6 +62,24 @@ function getGeminiClient() {
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
+
+// Server-side Persistent State Endpoints
+app.get('/api/state', (req, res) => {
+  const state = readServerState();
+  res.json({ hasState: state !== null, state });
+});
+
+app.post('/api/state', (req, res) => {
+  if (!req.body || typeof req.body !== 'object') {
+    return res.status(400).json({ success: false, error: 'Invalid payload' });
+  }
+  const ok = writeServerState(req.body);
+  if (!ok) {
+    return res.status(500).json({ success: false, error: 'Failed to write server state' });
+  }
+  return res.json({ success: true, updatedAt: new Date().toISOString() });
+});
+
 
 // Gemini Chat Endpoint
 app.post('/api/ai/chat', async (req, res) => {

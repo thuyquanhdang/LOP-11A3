@@ -16,20 +16,26 @@ import {
   CheckCircle2,
   Calendar,
   Flame,
-  Filter
+  Filter,
+  Camera,
+  Upload,
+  Heart,
+  Eye
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Student, RewardRecord, RewardCategory, TeamGroup, ClassInfo } from '../types';
+import { Student, RewardRecord, RewardCategory, TeamGroup, ClassInfo, GalleryPhoto } from '../types';
 import { INITIAL_CLASS_INFO, getDefaultTeamForStudent } from '../mockData';
 
 interface RewardsViewProps {
   students: Student[];
   rewards: RewardRecord[];
+  galleryPhotos?: GalleryPhoto[];
   classInfo?: ClassInfo;
   onAddReward: (reward: RewardRecord) => void;
   onUpdateReward: (reward: RewardRecord) => void;
   onDeleteReward: (rewardId: string) => void;
   onUpdateStudent?: (student: Student) => void;
+  onOpenFullGallery?: (teamFilter?: 'Tập thể lớp' | TeamGroup) => void;
 }
 
 const CATEGORY_COLORS: Record<RewardCategory, { bg: string; text: string; border: string }> = {
@@ -83,11 +89,13 @@ const TEAM_STYLES: Record<TeamGroup, {
 export const RewardsView: React.FC<RewardsViewProps> = ({
   students,
   rewards,
+  galleryPhotos = [],
   classInfo = INITIAL_CLASS_INFO,
   onAddReward,
   onUpdateReward,
   onDeleteReward,
-  onUpdateStudent
+  onUpdateStudent,
+  onOpenFullGallery
 }) => {
   const [selectedTeam, setSelectedTeam] = useState<'all' | TeamGroup>('all');
   const [viewMode, setViewMode] = useState<'activities' | 'team-roster'>('activities');
@@ -445,28 +453,47 @@ export const RewardsView: React.FC<RewardsViewProps> = ({
                 </p>
               </div>
 
-              <div className="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-center">
+              <div className="mt-4 pt-3 border-t border-slate-100 grid grid-cols-3 gap-1.5 text-center">
                 <div className="bg-slate-50 rounded-xl p-2">
-                  <p className="text-[11px] text-slate-500">Thành viên</p>
-                  <p className="text-sm font-extrabold text-slate-800">{stat.studentCount} HS</p>
+                  <p className="text-[10px] text-slate-500">Thành viên</p>
+                  <p className="text-xs sm:text-sm font-extrabold text-slate-800">{stat.studentCount} HS</p>
                 </div>
                 <div className="bg-emerald-50/70 rounded-xl p-2">
-                  <p className="text-[11px] text-emerald-700">Thành tích</p>
-                  <p className="text-sm font-extrabold text-emerald-700">{stat.activityCount} lượt</p>
+                  <p className="text-[10px] text-emerald-700">Thành tích</p>
+                  <p className="text-xs sm:text-sm font-extrabold text-emerald-700">{stat.activityCount} lượt</p>
+                </div>
+                <div className="bg-indigo-50/80 rounded-xl p-2">
+                  <p className="text-[10px] text-indigo-700">Ảnh kỉ niệm</p>
+                  <p className="text-xs sm:text-sm font-extrabold text-indigo-700">
+                    {galleryPhotos.filter((p) => p.target === stat.team).length} ảnh
+                  </p>
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleOpenAdd(stat.team);
-                }}
-                className="mt-3 w-full py-1.5 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-xs font-bold transition flex items-center justify-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Thêm hoạt động {stat.team}
-              </button>
+              <div className="mt-3 grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenAdd(stat.team);
+                  }}
+                  className="py-1.5 px-2 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Ghi thành tích</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onOpenFullGallery) onOpenFullGallery(stat.team);
+                  }}
+                  className="py-1.5 px-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  <Camera className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Tải ảnh {stat.team}</span>
+                </button>
+              </div>
             </div>
           );
         })}

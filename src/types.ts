@@ -207,6 +207,33 @@ export interface ClassInfo {
   femaleCount?: number;
 }
 
+export type GalleryTarget = 'Tập thể lớp' | TeamGroup;
+
+export type GalleryCategory =
+  | 'Học tập & Giờ học tốt'
+  | 'Lao động & Trực nhật'
+  | 'Văn nghệ & Thể thao'
+  | 'Sinh hoạt lớp & Đoàn - Đội'
+  | 'Sinh hoạt nội trú'
+  | 'Ngoại khóa & Dã ngoại'
+  | 'Kỉ niệm đáng nhớ';
+
+export interface GalleryPhoto {
+  id: string;
+  title: string;
+  description: string;
+  imageUrl: string; // Base64 compressed image or URL
+  target: GalleryTarget; // 'Tập thể lớp' | 'Tổ 1' | 'Tổ 2' | 'Tổ 3' | 'Tổ 4'
+  category: GalleryCategory;
+  date: string; // YYYY-MM-DD
+  week?: number;
+  uploadedBy: string; // Tên tổ trưởng, học sinh hoặc GVCN
+  studentIds?: string[]; // Học sinh xuất hiện trong ảnh
+  studentNames?: string[];
+  likes?: number;
+  isFeatured?: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -221,9 +248,11 @@ export type ActiveTab =
   | 'attendance'
   | 'violations'
   | 'rewards'
+  | 'gallery'
   | 'conduct'
   | 'parents'
   | 'policies'
   | 'reports'
   | 'ai-assistant'
   | 'settings';
+

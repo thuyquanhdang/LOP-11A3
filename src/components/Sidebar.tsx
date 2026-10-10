@@ -5,6 +5,7 @@ import {
   CalendarCheck, 
   AlertTriangle, 
   Award, 
+  Camera,
   Target, 
   PhoneCall, 
   FileText, 
@@ -28,6 +29,7 @@ interface SidebarProps {
     students: number;
     violations: number;
     rewards: number;
+    gallery?: number;
     attentionStudents: number;
     pendingPolicies: number;
   };
@@ -73,6 +75,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Award,
       badge: counts.rewards > 0 ? counts.rewards.toString() : null,
       badgeColor: 'bg-amber-500 text-white'
+    },
+    { 
+      id: 'gallery' as ActiveTab, 
+      label: 'Thư viện ảnh & Kỉ niệm tổ', 
+      icon: Camera,
+      badge: (counts.gallery ?? 0) > 0 ? `${counts.gallery} ảnh` : null,
+      badgeColor: 'bg-indigo-500 text-white'
     },
     { 
       id: 'conduct' as ActiveTab, 
