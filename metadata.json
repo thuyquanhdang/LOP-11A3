@@ -1,0 +1,6 @@
+{
+  "name": "Trợ Lý Chủ Nhiệm THPT",
+  "description": "Ứng dụng trợ lý đắc lực dành cho giáo viên THPT quản lý học sinh, điểm danh, nề nếp kỷ luật, khen thưởng, rèn luyện, liên lạc phụ huynh, chế độ chính sách và trợ lý AI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
